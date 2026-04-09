@@ -1,195 +1,231 @@
+import heapq
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 import numpy as np
-import heapq
+from collections import deque
 
+# -------------------------------
+# Maze Definition
+# -------------------------------
+# Example 2 (Current)
+maze = [
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+[1,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+[1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+[1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1],
+[1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1],
+[1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,"G",0,0,1,0,1,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,0,1,0,1,1,1,1,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,1,0,1,0,1,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,0,1,1,1,1,1,0,1,1,1,1,1,1,0,1,0,1,0,1,0,1,0,1],
+[1,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0,1],
+[1,0,1,0,1,0,1,1,1,1,1,1,0,0,0,1,1,1,1,1,1,1,1,1,1,1,1,1,0,1],
+[1,"S",0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,3,1],
+[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+]
 
-# Simple maze: 1 = free, 0 = wall
-MAZE = np.array([
-    [1, 0, 1, 1, 1, 1, 1, 1],
-    [1, 0, 1, 0, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 0, 1],
-    [1, 0, 0, 0, 0, 1, 0, 1],
-    [1, 1, 1, 1, 0, 1, 1, 1],
-    [0, 0, 0, 1, 0, 0, 0, 1],
-    [1, 1, 1, 1, 1, 1, 1, 1],
-], dtype=int)
+ROWS = len(maze)
+COLS = len(maze[0])
 
-ROWS, COLS = MAZE.shape
+grid = np.zeros((ROWS, COLS))
+for i in range(ROWS):
+    for j in range(COLS):
+        if maze[i][j] == 1:
+            grid[i][j] = 1
+        elif maze[i][j] == "S":
+            start = (i, j)
+        elif maze[i][j] == "G":
+            goal = (i, j)
 
-# Start and goal coordinates (row, col)
-start = (0, 0)
-goal = (6, 7)
-
-# Image grid: use floats 0.0..1.0 where 0=wall (black), 1=free (white)
-grid = MAZE.astype(float)
-
-
+# -------------------------------
+# Node Class
+# -------------------------------
 class Node:
     def __init__(self, state, parent=None, action=None, cost=0):
         self.state = state
         self.parent = parent
         self.action = action
-        self.cost = cost
+        self.cost = cost 
 
+# -------------------------------
+# Problem Definition
+# -------------------------------
+def actions(state):
+    x, y = state
+    moves = {"UP": (-1, 0), "DOWN": (1, 0), "LEFT": (0, -1), "RIGHT": (0, 1)}
+    possible = []
+    for action, (dx, dy) in moves.items():
+        nx, ny = x + dx, y + dy
+        if 0 <= nx < ROWS and 0 <= ny < COLS:
+            if maze[nx][ny] != 1:
+                possible.append(action)
+    return possible
 
-class PriorityNode(Node):
-    def __init__(self, state, parent=None, action=None, cost=0, priority=0):
-        super().__init__(state, parent, action, cost)
-        self.priority = priority
-
-    def __lt__(self, other):
-        return self.priority < other.priority
-
+def result(state, action):
+    moves = {"UP": (-1, 0), "DOWN": (1, 0), "LEFT": (0, -1), "RIGHT": (0, 1)}
+    dx, dy = moves[action]
+    return (state[0] + dx, state[1] + dy)
 
 def goal_test(state):
     return state == goal
 
-
-def actions(state):
-    r, c = state
-    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-        nr, nc = r + dr, c + dc
-        if 0 <= nr < ROWS and 0 <= nc < COLS and grid[nr, nc] == 1.0:
-            yield (dr, dc)
-
-
-def result(state, action):
-    r, c = state
-    dr, dc = action
-    return (r + dr, c + dc)
-
-
 def reconstruct_path(node):
     path = []
-    cur = node
-    while cur is not None:
-        path.append(cur.state)
-        cur = cur.parent
+    while node:
+        path.append(node.state)
+        node = node.parent
     path.reverse()
     return path
 
-
-def heuristic_func(state):
+def heuristic_dist(state):
+    # Manhattan distance: |x1 - x2| + |y1 - y2|
     return abs(state[0] - goal[0]) + abs(state[1] - goal[1])
 
-
-def greedy_bfs_steps():
-    """Greedy Best-First Search: priority = heuristic(state)"""
-    start_node = PriorityNode(start, cost=0, priority=heuristic_func(start))
-    frontier = []
-    heapq.heappush(frontier, start_node)
+# -------------------------------
+# DFS
+# -------------------------------
+def dfs_steps():
+    frontier = [Node(start, cost=0)]
     explored = set()
-
-    while frontier:
-        node = heapq.heappop(frontier)
-
+    while True:
+        if not frontier: return
+        node = frontier.pop()
         yield node.state, len(explored), len(frontier), node.cost
-
         if goal_test(node.state):
             yield reconstruct_path(node), "path"
             return
-
-        if node.state in explored:
-            continue
-
         explored.add(node.state)
+        for action in actions(node.state):
+            child_state = result(node.state, action)
+            if child_state not in explored and all(child_state != n.state for n in frontier):
+                frontier.append(Node(child_state, node, action, node.cost + 1))
 
-        for act in actions(node.state):
-            child_state = result(node.state, act)
-            if child_state in explored:
-                continue
-            # avoid duplicates in frontier
-            if any(child_state == n.state for n in frontier):
-                continue
-            h = heuristic_func(child_state)
-            child = PriorityNode(child_state, node, act, node.cost + 1, priority=h)
-            heapq.heappush(frontier, child)
-
-
-def a_star_steps():
-    """A* search: priority = g + h"""
-    start_node = PriorityNode(start, cost=0, priority=heuristic_func(start))
-    frontier = []
-    heapq.heappush(frontier, start_node)
-    explored = {}  # state -> best g
-
-    while frontier:
-        node = heapq.heappop(frontier)
-
+# -------------------------------
+# BFS
+# -------------------------------
+def bfs_steps():
+    frontier = deque([Node(start, cost=0)])
+    explored = set()
+    while True:
+        if not frontier: return
+        node = frontier.popleft()
         yield node.state, len(explored), len(frontier), node.cost
-
         if goal_test(node.state):
             yield reconstruct_path(node), "path"
             return
+        explored.add(node.state)
+        for action in actions(node.state):
+            child_state = result(node.state, action)
+            if child_state not in explored and all(child_state != n.state for n in frontier):
+                frontier.append(Node(child_state, node, action, node.cost + 1))
 
-        # skip if we've already found a better path
-        if node.state in explored and node.cost > explored[node.state]:
-            continue
+# -------------------------------
+# A* Search
+# -------------------------------
+def astar_steps():
+    # Tie-breaker counter
+    count = 0
+    # Priority Queue stores: (f_score, count, node)
+    frontier = [(heuristic_dist(start), count, Node(start, cost=0))]
+    explored = set()
+    
+    while frontier:
+        f, _, node = heapq.heappop(frontier)
+        if node.state in explored: continue
+        
+        yield node.state, len(explored), len(frontier), node.cost
+        
+        if goal_test(node.state):
+            yield reconstruct_path(node), "path"
+            return
+            
+        explored.add(node.state)
+        for action in actions(node.state):
+            child_state = result(node.state, action)
+            if child_state not in explored:
+                count += 1
+                g_cost = node.cost + 1
+                f_cost = g_cost + heuristic_dist(child_state)
+                heapq.heappush(frontier, (f_cost, count, Node(child_state, node, action, g_cost)))
 
-        explored[node.state] = node.cost
+# -------------------------------
+# Greedy Best-First Search
+# -------------------------------
+def greedy_steps():
+    count = 0
+    # Priority Queue stores: (h_score, count, node)
+    frontier = [(heuristic_dist(start), count, Node(start, cost=0))]
+    explored = set()
+    
+    while frontier:
+        h, _, node = heapq.heappop(frontier)
+        if node.state in explored: continue
+        
+        yield node.state, len(explored), len(frontier), node.cost
+        
+        if goal_test(node.state):
+            yield reconstruct_path(node), "path"
+            return
+            
+        explored.add(node.state)
+        for action in actions(node.state):
+            child_state = result(node.state, action)
+            if child_state not in explored:
+                count += 1
+                heapq.heappush(frontier, (heuristic_dist(child_state), count, Node(child_state, node, action, node.cost + 1)))
 
-        for act in actions(node.state):
-            child_state = result(node.state, act)
-            new_g = node.cost + 1
-            # if we've seen a better g for child, skip
-            if child_state in explored and new_g >= explored[child_state]:
-                continue
-            new_f = new_g + heuristic_func(child_state)
-            child = PriorityNode(child_state, node, act, new_g, priority=new_f)
-            heapq.heappush(frontier, child)
-
-
-def animate_solver(algorithm="GREEDY"):
+# -------------------------------
+# Animation
+# -------------------------------
+def animate_solver(algorithm="BFS"):
     fig, ax = plt.subplots()
-    ax.set_title(f"AI {algorithm} Maze Solver")
     ax.set_facecolor("lightgray")
-
     maze_img = np.copy(grid)
-    img = ax.imshow(maze_img, cmap="gray_r", vmin=0, vmax=1)
+    img = ax.imshow(maze_img, cmap="gray_r")
 
-    ax.scatter(start[1], start[0], c="green", s=100, label="Start")
-    ax.scatter(goal[1], goal[0], c="red", s=100, label="Goal")
+    ax.scatter(start[1], start[0], c="green", s=100)
+    ax.scatter(goal[1], goal[0], c="red", s=100)
 
-    frontier_text = ax.text(0.01, 0.98, "", transform=ax.transAxes, fontsize=10, va='top')
-    explored_text = ax.text(0.5, 0.98, "", transform=ax.transAxes, fontsize=10, va='top')
+    frontier_text = ax.text(0, -1, "", fontsize=10)
+    explored_text = ax.text(10, -1, "", fontsize=10)
 
-    algos = {
-        "GREEDY": greedy_bfs_steps,
-        "ASTAR": a_star_steps,
-    }
-
-    steps = algos.get(algorithm.upper())
-    if steps is None:
-        raise ValueError("Algorithm must be 'GREEDY' or 'ASTAR'")
-
-    steps_gen = steps()
+    # Select step generator based on algorithm string
+    if algorithm == "BFS":
+        steps = bfs_steps()
+    elif algorithm == "DFS":
+        steps = dfs_steps()
+    elif algorithm == "ASTAR":
+        steps = astar_steps()
+    elif algorithm == "GREEDY":
+        steps = greedy_steps()
+    else:
+        steps = bfs_steps()
 
     def update(frame):
         nonlocal maze_img
-        if isinstance(frame[1], str):
-            path = frame[0]
-            for x, y in path:
+        if isinstance(frame[1], str): # Final Path
+            for x, y in frame[0]:
                 maze_img[x][y] = 0.9
-        else:
+        else: # Exploration step
             state, explored_size, frontier_size, cost = frame
             x, y = state
-            # don't overwrite start/goal markers; set explored shading
-            if (x, y) != start and (x, y) != goal:
-                maze_img[x][y] = 0.5
+            maze_img[x][y] = 0.5
             frontier_text.set_text(f"Frontier: {frontier_size}")
             explored_text.set_text(f"Explored: {explored_size}")
 
         img.set_data(maze_img)
         return [img]
 
-    ani = animation.FuncAnimation(
-        fig, update, frames=steps_gen, interval=80, repeat=False, cache_frame_data=False
-    )
+    ani = animation.FuncAnimation(fig, update, frames=steps, interval=200, repeat=False)
     plt.show()
 
-
+# -------------------------------
+# Run
+# -------------------------------
 if __name__ == "__main__":
-    import sys
-    alg = sys.argv[1] if len(sys.argv) > 1 else "ASTAR"
-    animate_solver(alg)
+    # Options: "DFS", "BFS", "ASTAR", "GREEDY"
+    animate_solver("ASTAR")
